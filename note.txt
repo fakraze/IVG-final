@@ -1,0 +1,96 @@
+
+------------------------------------------------------ CacheQuant 加速推理
+
+# 方案 1: 快速测试（无校准，直接使用 cache_interval=5）
+# car-turn 模型
+python inference_cachequant.py \
+    --model-path ./outputs/car-turn \
+    --inv-latent ./outputs/car-turn/inv_latents/ddim_latent-100.pt \
+    --prompt "a sports car is moving on the road" \
+    --use-cache \
+    --cache-interval 5 \
+    --output-name car_turn_cache5
+
+# man-skiing 模型
+python inference_cachequant.py \
+    --model-path ./outputs/man-skiing \
+    --inv-latent ./outputs/man-skiing/inv_latents/ddim_latent-100.pt \
+    --prompt "a man is skiing" \
+    --use-cache \
+    --cache-interval 5 \
+    --output-name man_skiing_cache5
+
+# 测试不同的 cache_interval
+python inference_cachequant.py \
+    --model-path ./outputs/car-turn \
+    --inv-latent ./outputs/car-turn/inv_latents/ddim_latent-100.pt \
+    --prompt "a sports car is moving on the road" \
+    --use-cache \
+    --cache-interval 3 \
+    --output-name car_turn_cache3
+
+# 对比基线（无加速）
+python inference_cachequant.py \
+    --model-path ./outputs/car-turn \
+    --inv-latent ./outputs/car-turn/inv_latents/ddim_latent-100.pt \
+    --prompt "a sports car is moving on the road" \
+    --no-cache \
+    --output-name car_turn_baseline
+
+------------------------------------------------------ CacheQuant 优化版（先校准）
+
+# 步骤 1: 校准（每个模型只需运行一次）
+python calibrate_tuneavideo_cachequant.py \
+    --model-path ./outputs/car-turn \
+    --inv-latent ./outputs/car-turn/inv_latents/ddim_latent-100.pt \
+    --prompt "a sports car is moving on the road"
+
+# 步骤 2: 使用校准数据推理
+python inference_cachequant.py \
+    --model-path ./outputs/car-turn \
+    --inv-latent ./outputs/car-turn/inv_latents/ddim_latent-100.pt \
+    --prompt "a sports car is moving on the road" \
+    --use-cache \
+    --calibration-path ./calibration/cachequant_cache5_steps50.pth \
+    --output-name car_turn_optimized
+
+# 尝试不同的 prompt
+python inference_cachequant.py \
+    --model-path ./outputs/car-turn \
+    --inv-latent ./outputs/car-turn/inv_latents/ddim_latent-100.pt \
+    --prompt "a jeep car is moving on the road, cartoon style" \
+    --use-cache \
+    --calibration-path ./calibration/cachequant_cache5_steps50.pth \
+    --output-name car_turn_jeep_cartoon
+
+------------------------------------------------------ 完整实验（论文级别的 Quantitative Results）
+
+# 安装 CLIP（如果还没安装）
+pip install git+https://github.com/openai/CLIP.git
+
+# 测试 1: 先测试校准是否正常（内存优化版）
+python test_calibration.py
+
+# 方法 1: 快速测试（只跑前2个模型，每个模型1个prompt）
+python run_experiments_quick.py
+
+# 方法 2: 完整实验（跑所有模型、所有prompts、所有配置）
+# 注意：这会花费较长时间（预计2-4小时）
+python run_experiments.py
+
+# 实验内容：
+# 1. 4个模型（car-turn, man-skiing, man-surfing, rabbit-watermelon）
+# 2. 每个模型4个validation prompts
+# 3. 测试配置：
+#    - Baseline（无加速）
+#    - Cache interval = 3, 5, 10（无calibration）
+#    - Cache interval = 3, 5, 10（有calibration/DPS）
+# 4. 评估指标：
+#    - Frame Consistency（CLIP score）
+#    - Textual Alignment（CLIP score）
+#    - Inference Time（推理时间）
+#    - Speedup（加速倍数）
+# 5. 输出：
+#    - 所有生成的视频（保存到 experiment_results/videos/）
+#    - 详细结果CSV（每个实验的完整数据）
+#    - 汇总结果CSV（平均值、标准差、加速倍数）
